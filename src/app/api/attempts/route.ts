@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { getUserIdFromRequest } from "@/lib/auth/user";
 import { getServiceSupabase } from "@/lib/supabase/server";
-
-const createSchema = z.object({
-  status: z.enum(["in_progress", "submitted", "graded"]).optional(),
-});
 
 export async function POST(request: Request) {
   const userId = await getUserIdFromRequest(request);
@@ -13,18 +8,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "인증이 필요합니다." }, { status: 401 });
   }
 
-  const payload = await request.json();
-  const parse = createSchema.safeParse(payload);
-  if (!parse.success) {
-    return NextResponse.json({ error: "payload를 확인해주세요." }, { status: 400 });
+  const supabase = getServiceSupabase();
+  
+  // user_id로 student_id 찾기
+  const { data: student } = await supabase
+    .from("students")
+    .select("id")
+    .eq("user_id", userId)
+    .single();
+
+  if (!student) {
+    return NextResponse.json({ error: "학생 정보를 찾을 수 없습니다." }, { status: 404 });
   }
 
-  const supabase = getServiceSupabase();
+  // 기존 응시 확인 - 이미 있으면 생성하지 않음
+  const { data: existing } = await supabase
+    .from("attempts")
+    .select("*")
+    .eq("student_id", student.id)
+    .single();
+
+  if (existing) {
+    return NextResponse.json({ error: "이미 응시를 시작했습니다." }, { status: 400 });
+  }
+
   const { data, error } = await supabase
     .from("attempts")
     .insert({
-      student_id: userId,
-      status: parse.data.status ?? "in_progress",
+      student_id: student.id,
     })
     .select()
     .single();
@@ -43,12 +54,22 @@ export async function GET(request: Request) {
   }
 
   const supabase = getServiceSupabase();
+  
+  // user_id로 student_id 찾기
+  const { data: student } = await supabase
+    .from("students")
+    .select("id")
+    .eq("user_id", userId)
+    .single();
+
+  if (!student) {
+    return NextResponse.json({ attempt: null });
+  }
+
   const { data, error } = await supabase
     .from("attempts")
     .select("*")
-    .eq("student_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(1)
+    .eq("student_id", student.id)
     .single();
 
   if (error && error.code !== "PGRST116") {

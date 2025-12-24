@@ -29,8 +29,8 @@ export default function StartPage() {
     }
 
     const { error: studentError } = await supabase.from("students").upsert({
-      id: authData.user.id,
-      display_name: displayName.trim(),
+      user_id: authData.user.id,
+      name: displayName.trim(),
     });
 
     if (studentError) {
@@ -43,44 +43,115 @@ export default function StartPage() {
   };
 
   return (
-    <main style={{ maxWidth: 520, margin: "0 auto", padding: "48px 16px" }}>
-      <h1 style={{ fontSize: "28px", marginBottom: 8 }}>익명 로그인으로 시험 시작</h1>
-      <p style={{ marginBottom: 24, color: "#4b5563" }}>
-        이름만 입력하면 익명 계정이 생성됩니다. 이후 모든 데이터는 RLS로 본인만 조회할 수 있습니다.
-      </p>
-      <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
-        <label style={{ display: "grid", gap: 8 }}>
-          <span style={{ fontWeight: 600 }}>이름</span>
-          <input
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="홍길동"
-            required
-            style={{
-              padding: "12px",
+    <main style={{ 
+      minHeight: "100vh", 
+      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "24px"
+    }}>
+      <div style={{ 
+        maxWidth: 520, 
+        width: "100%",
+        background: "white",
+        borderRadius: 16,
+        padding: "40px 32px",
+        boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+      }}>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <h1 style={{ 
+            fontSize: "32px", 
+            fontWeight: 800, 
+            marginBottom: 12,
+            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent"
+          }}>
+            시험 시작
+          </h1>
+          <p style={{ color: "#6b7280", lineHeight: 1.6, fontSize: "15px" }}>
+            이름을 입력하고 프로젝트 역량 평가를 시작하세요
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: "grid", gap: 20 }}>
+          <label style={{ display: "grid", gap: 8 }}>
+            <span style={{ fontWeight: 600, fontSize: "14px", color: "#374151" }}>이름</span>
+            <input
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="홍길동"
+              required
+              style={{
+                padding: "14px 16px",
+                borderRadius: 10,
+                border: "2px solid #e5e7eb",
+                fontSize: "16px",
+                transition: "all 0.2s",
+                outline: "none"
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = "#667eea";
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = "#e5e7eb";
+              }}
+            />
+          </label>
+
+          {error && (
+            <div style={{ 
+              color: "#991b1b",
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+              padding: 12,
               borderRadius: 8,
-              border: "1px solid #d1d5db",
-              fontSize: 16,
+              fontSize: "14px"
+            }}>
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            style={{
+              background: isSubmitting 
+                ? "#d1d5db" 
+                : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              color: "white",
+              padding: "16px 24px",
+              borderRadius: 10,
+              fontWeight: 700,
+              fontSize: "16px",
+              border: "none",
+              cursor: isSubmitting ? "not-allowed" : "pointer",
+              boxShadow: isSubmitting 
+                ? "none" 
+                : "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+              transition: "all 0.2s"
             }}
-          />
-        </label>
-        {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          style={{
-            background: "#111827",
-            color: "white",
-            padding: "12px 16px",
-            borderRadius: 8,
-            fontWeight: 700,
-            border: "none",
-            opacity: isSubmitting ? 0.7 : 1,
-          }}
-        >
-          {isSubmitting ? "처리 중..." : "시험 시작하기"}
-        </button>
-      </form>
+          >
+            {isSubmitting ? "처리 중..." : "시험 시작하기"}
+          </button>
+        </form>
+
+        <div style={{ 
+          marginTop: 24, 
+          padding: 16,
+          background: "#f9fafb",
+          borderRadius: 10,
+          fontSize: "13px",
+          color: "#6b7280",
+          lineHeight: 1.6
+        }}>
+          <strong style={{ color: "#374151" }}>안내사항</strong><br />
+          • 총 30문항 (CS, 협업, AI 각 10문항)<br />
+          • 제출 후 즉시 결과 확인 가능<br />
+          • 익명 로그인으로 개인정보 보호
+        </div>
+      </div>
     </main>
   );
 }

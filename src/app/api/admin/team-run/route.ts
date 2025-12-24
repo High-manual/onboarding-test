@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertAdminSession } from "@/lib/admin/session";
 import { getServiceSupabase } from "@/lib/supabase/server";
+import { matchTeams } from "@/lib/langgraph/team-matching";
 
 const payloadSchema = z.object({
-  teamCount: z.number().int().positive(),
+  teamSize: z.number().int().positive(),
+  mode: z.enum(["rank", "balanced"]).default("rank"),
 });
 
 export async function POST(request: Request) {
@@ -18,14 +20,27 @@ export async function POST(request: Request) {
   const parse = payloadSchema.safeParse(json);
 
   if (!parse.success) {
-    return NextResponse.json({ error: "teamCount를 확인해주세요." }, { status: 400 });
+    return NextResponse.json({ error: "teamSize를 확인해주세요." }, { status: 400 });
   }
 
   const supabase = getServiceSupabase();
 
+  // 제출된 응시만 가져오기
+  const { data: attempts, error: attemptsError } = await supabase
+    .from("attempts")
+    .select("id, student_id, score, cs_score, collab_score, ai_score")
+    .not("submitted_at", "is", null)
+    .order("score", { ascending: false, nullsFirst: false });
+
+  if (attemptsError || !attempts || attempts.length === 0) {
+    return NextResponse.json({ error: attemptsError?.message ?? "제출된 응시가 없습니다." }, { status: 500 });
+  }
+
+  const { teamCount, assignments } = await matchTeams(attempts, parse.data.teamSize, parse.data.mode);
+
   const { data: teamRun, error: teamRunError } = await supabase
     .from("team_runs")
-    .insert({ team_count: parse.data.teamCount })
+    .insert({ team_size: parse.data.teamSize, mode: parse.data.mode })
     .select()
     .single();
 
@@ -33,9 +48,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: teamRunError?.message ?? "팀 매칭을 생성하지 못했습니다." }, { status: 500 });
   }
 
-  const teamsToCreate = Array.from({ length: parse.data.teamCount }).map((_, index) => ({
-    team_run_id: teamRun.id,
-    team_no: index + 1,
+  const teamsToCreate = Array.from({ length: teamCount }).map((_, index) => ({
+    run_id: teamRun.id,
+    team_number: index + 1,
   }));
 
   const { data: teams, error: teamsError } = await supabase.from("teams").insert(teamsToCreate).select();
@@ -44,18 +59,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: teamsError?.message ?? "팀 생성 실패" }, { status: 500 });
   }
 
-  const { data: attempts, error: attemptsError } = await supabase
-    .from("attempts")
-    .select("id, student_id, total_score")
-    .order("total_score", { ascending: false, nullsFirst: false });
-
-  if (attemptsError || !attempts) {
-    return NextResponse.json({ error: attemptsError?.message ?? "응시 데이터를 가져오지 못했습니다." }, { status: 500 });
-  }
-
-  const members = attempts.map((attempt, index) => ({
-    team_id: teams[index % teams.length].id,
-    student_id: attempt.student_id,
+  const members = assignments.map((assignment) => ({
+    team_id: teams[assignment.teamIndex].id,
+    student_id: assignment.studentId,
+    reason: assignment.reason,
   }));
 
   if (members.length > 0) {
@@ -65,5 +72,5 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ teamRun, teams, members });
+  return NextResponse.json({ teamRun, teams, members, teamCount, mode: parse.data.mode });
 }

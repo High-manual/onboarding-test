@@ -1,31 +1,43 @@
 export type QuestionCategory = "cs" | "collab" | "ai";
 
 export interface Question {
-  id: number;
+  id: string;
+  question_text: string;
+  option_a: string;
+  option_b: string;
+  option_c: string;
+  correct_answer: "A" | "B" | "C" ;
   category: QuestionCategory;
-  prompt: string;
-  choice_a: string;
-  choice_b: string;
-  choice_c: string;
-  answer: "A" | "B" | "C";
+  created_at: string;
 }
 
 export interface Attempt {
   id: string;
   student_id: string;
-  status: "in_progress" | "submitted" | "graded";
-  total_score: number | null;
+  score: number | null;
   cs_score: number | null;
   collab_score: number | null;
   ai_score: number | null;
-  report_md: string | null;
-  created_at: string;
   submitted_at: string | null;
+  created_at: string;
 }
 
 export interface TeamRun {
   id: string;
-  team_count: number;
-  status: "draft" | "final";
+  team_size: number;
+  created_at: string;
+}
+
+export interface Team {
+  id: string;
+  run_id: string;
+  team_number: number;
+  created_at: string;
+}
+
+export interface TeamMember {
+  id: string;
+  team_id: string;
+  student_id: string;
   created_at: string;
 }

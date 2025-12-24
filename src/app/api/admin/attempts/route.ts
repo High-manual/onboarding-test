@@ -16,18 +16,16 @@ export async function GET() {
       `
         id,
         student_id,
-        status,
-        total_score,
+        score,
         cs_score,
         collab_score,
         ai_score,
-        report_md,
         created_at,
         submitted_at,
-        students:student_id ( display_name )
+        students:student_id ( name )
       `,
     )
-    .order("total_score", { ascending: false });
+    .order("score", { ascending: false, nullsFirst: false });
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
