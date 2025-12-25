@@ -17,27 +17,33 @@ export async function GET(request: Request) {
 
   const supabase = getServiceSupabase();
 
-  // user_id로 student_id 찾기
-  const { data: student } = await supabase
-    .from("students")
-    .select("id")
-    .eq("user_id", userId)
-    .single();
+  // 병렬 쿼리 실행으로 성능 최적화
+  const [studentResult, attemptResult] = await Promise.all([
+    supabase
+      .from("students")
+      .select("id")
+      .eq("user_id", userId)
+      .single(),
+    supabase
+      .from("attempts")
+      .select("*")
+      .eq("id", attemptId)
+      .single(),
+  ]);
 
-  if (!student) {
+  const { data: student, error: studentError } = studentResult;
+  const { data: attempt, error: attemptError } = attemptResult;
+
+  if (studentError || !student) {
     return NextResponse.json({ error: "학생 정보를 찾을 수 없습니다." }, { status: 404 });
   }
 
-  // attempt 확인
-  const { data: attempt, error: attemptError } = await supabase
-    .from("attempts")
-    .select("*")
-    .eq("id", attemptId)
-    .eq("student_id", student.id)
-    .single();
-
   if (attemptError || !attempt) {
     return NextResponse.json({ error: "응시 내역을 찾을 수 없습니다." }, { status: 404 });
+  }
+
+  if (attempt.student_id !== student.id) {
+    return NextResponse.json({ error: "본인 응시 내역만 조회할 수 있습니다." }, { status: 403 });
   }
 
   // responses 조회
@@ -55,7 +61,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "응답을 찾을 수 없습니다." }, { status: 404 });
   }
 
-  // questions 조회
+  // 필요한 question_id만 추출하여 조회
   const questionIds = responses.map((r) => r.question_id);
   const { data: questions, error: questionsError } = await supabase
     .from("questions")

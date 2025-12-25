@@ -44,7 +44,7 @@ export async function POST(request: Request) {
 
   const { data: attempt, error: attemptError } = await supabase
     .from("attempts")
-    .select("id, student_id")
+    .select("id, student_id, submitted_at")
     .eq("id", parse.data.attemptId)
     .single();
 
@@ -54,6 +54,11 @@ export async function POST(request: Request) {
 
   if (attempt.student_id !== student.id) {
     return NextResponse.json({ error: "본인 응시만 제출할 수 있습니다." }, { status: 403 });
+  }
+
+  // 중복 제출 방지
+  if (attempt.submitted_at) {
+    return NextResponse.json({ error: "이미 제출된 응시입니다." }, { status: 400 });
   }
 
   const questionIds = parse.data.responses.map((r) => r.questionId);
@@ -86,11 +91,6 @@ export async function POST(request: Request) {
     };
   });
 
-  const { error: insertError } = await supabase.from("responses").upsert(responsesToInsert);
-  if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 500 });
-  }
-
   // 카테고리별 점수 계산
   const categoryScores: Record<QuestionCategory, { correct: number; total: number }> = {
     cs: { correct: 0, total: 0 },
@@ -112,6 +112,13 @@ export async function POST(request: Request) {
   const totalCount = responsesToInsert.length;
   const score = Math.round((correctCount / totalCount) * 100);
 
+  // 트랜잭션처럼 처리: responses upsert와 attempts update를 순차 실행하되,
+  // submitted_at을 조건으로 추가하여 중복 제출 방지
+  const { error: insertError } = await supabase.from("responses").upsert(responsesToInsert);
+  if (insertError) {
+    return NextResponse.json({ error: insertError.message }, { status: 500 });
+  }
+
   // const report = await generateReport({
   //   studentName: student.name ?? null,
   //   score,
@@ -120,6 +127,7 @@ export async function POST(request: Request) {
   //   categoryScores,
   // });
 
+  // submitted_at이 null인 경우에만 업데이트 (중복 제출 방지)
   const { error: attemptUpdateError } = await supabase
     .from("attempts")
     .update({
@@ -133,10 +141,22 @@ export async function POST(request: Request) {
       //   generated_at: new Date().toISOString(),
       // },
     })
-    .eq("id", parse.data.attemptId);
+    .eq("id", parse.data.attemptId)
+    .is("submitted_at", null);
 
   if (attemptUpdateError) {
     return NextResponse.json({ error: attemptUpdateError.message }, { status: 500 });
+  }
+
+  // 업데이트가 실제로 발생했는지 확인 (다른 요청이 먼저 제출한 경우)
+  const { data: updatedAttempt } = await supabase
+    .from("attempts")
+    .select("submitted_at")
+    .eq("id", parse.data.attemptId)
+    .single();
+
+  if (!updatedAttempt?.submitted_at) {
+    return NextResponse.json({ error: "제출 처리 중 오류가 발생했습니다. 다시 시도해주세요." }, { status: 409 });
   }
 
   return NextResponse.json({ 
