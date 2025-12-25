@@ -71,7 +71,7 @@ export default function Home() {
               </div>
               <div>
                 <h3 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 600 }}>
-                  30문항 역량 평가
+                  50문항 역량 평가
                 </h3>
                 <p style={{ margin: 0, fontSize: "14px", color: "#6b7280" }}>
                   CS 기초, 협업 능력, AI 활용 능력을 평가합니다

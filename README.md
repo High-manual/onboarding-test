@@ -6,7 +6,7 @@ OT 날 진행되는 CS/협업/AI 역량 평가 시험과 자동 팀 매칭을 �
 
 ### 수강생 기능
 - **익명 로그인**: 이름만 입력하면 시작
-- **30문항 역량 평가**: CS(10) + 협업(10) + AI(10) 역량 측정
+- **50문항 역량 평가**: CS(15) + 협업(15) + AI(20) 역량 측정
 - **실시간 결과 분석**: 
   - 총점 및 카테고리별 점수
   - 역량별 시각화 차트
@@ -69,7 +69,7 @@ OPENAI_API_KEY=your_openai_api_key
 - **Auth → Providers**에서 Anonymous Sign-ins 활성화
 
 ### 2. 데이터베이스 스키마
-`docs/new_questions.sql` 파일의 질문 데이터를 Supabase SQL Editor에서 실행하여 30개 질문을 추가합니다.
+`docs/new_questions.sql` 파일의 질문 데이터를 Supabase SQL Editor에서 실행하여 50개 질문을 추가합니다.
 
 ### 3. RLS 정책
 - `students`, `attempts`, `responses` 테이블에 `auth.uid()` 기반 RLS 정책 적용
@@ -108,7 +108,7 @@ netlify deploy --prod
    - students 테이블에 저장
 
 3. **시험 페이지 (`/exam`)**: 
-   - 30문항 객관식 문제
+   - 50문항 객관식 문제
    - 카테고리별 라벨 표시
    - 이전/다음 네비게이션
    - 제출 후 즉시 결과 표시
@@ -129,7 +129,7 @@ netlify deploy --prod
 ## API 엔드포인트
 
 ### 학생용
-- `GET /api/questions` - 문제 30개 조회
+- `GET /api/questions` - 문제 50개 조회
 - `POST /api/attempts` - 응시 생성
 - `GET /api/attempts` - 본인 응시 조회
 - `POST /api/submit` - 답안 제출 및 채점

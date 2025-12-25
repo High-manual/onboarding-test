@@ -351,7 +351,7 @@ export default function ExamPage() {
             <h1 style={{ fontSize: "28px", margin: 0, fontWeight: 700 }}>
               프로젝트 역량 평가
             </h1>
-            <p style={{ color: "#6b7280", marginTop: 4, margin: 0 }}>총 30문항</p>
+            <p style={{ color: "#6b7280", marginTop: 4, margin: 0 }}>총 50문항</p>
           </div>
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
             <div
