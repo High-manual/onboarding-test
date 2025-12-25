@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getBrowserSupabaseClient } from "@/lib/supabase/client";
 import type { Attempt, Question } from "@/lib/types";
@@ -31,7 +31,7 @@ function getCategoryLabel(category?: string | null): string | null {
   }
 }
 
-export default function ResultPage() {
+function ResultContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => getBrowserSupabaseClient(), []);
@@ -485,6 +485,20 @@ export default function ResultPage() {
         )}
       </div>
     </main>
+  );
+}
+
+export default function ResultPage() {
+  return (
+    <Suspense
+      fallback={
+        <main style={{ maxWidth: 800, margin: "0 auto", padding: "48px 16px" }}>
+          <p>로딩 중...</p>
+        </main>
+      }
+    >
+      <ResultContent />
+    </Suspense>
   );
 }
 
