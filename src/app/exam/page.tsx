@@ -68,7 +68,7 @@ export default function ExamPage() {
       try {
         const startTime = parseInt(savedStartTime, 10);
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        const remaining = Math.max(0, 1200 - elapsed);
+        const remaining = Math.max(0, 1080 - elapsed);
         setTimeLeft(remaining);
       } catch (e) {
         console.error("Failed to parse saved start time:", e);
