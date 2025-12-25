@@ -11,7 +11,7 @@ const submissionSchema = z.object({
     .array(
       z.object({
         questionId: z.string().uuid(),
-        selected: z.enum(["A", "B", "C", "D"]),
+        selected: z.enum(["A", "B", "C", "D", "X"]),
       }),
     )
     .min(1),
@@ -76,7 +76,8 @@ export async function POST(request: Request) {
 
   const responsesToInsert = parse.data.responses.map((response) => {
     const question = questionLookup.get(response.questionId);
-    const isCorrect = question ? question.correct_answer === response.selected : false;
+    // "X"는 틀린 것으로 처리
+    const isCorrect = question && response.selected !== "X" ? question.correct_answer === response.selected : false;
     return {
       attempt_id: parse.data.attemptId,
       question_id: response.questionId,
