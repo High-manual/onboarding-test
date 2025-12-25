@@ -26,6 +26,7 @@ export interface Attempt {
 export interface TeamRun {
   id: string;
   team_size: number;
+  mode: "rank" | "balanced";
   created_at: string;
 }
 
@@ -40,5 +41,6 @@ export interface TeamMember {
   id: string;
   team_id: string;
   student_id: string;
+  reason: string | null;
   created_at: string;
 }
