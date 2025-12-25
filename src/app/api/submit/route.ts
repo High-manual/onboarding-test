@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getUserIdFromRequest } from "@/lib/auth/user";
 import { getServiceSupabase } from "@/lib/supabase/server";
 import type { QuestionCategory } from "@/lib/types";
-import { generateReport } from "@/lib/langgraph/report";
+// import { generateReport } from "@/lib/langgraph/report";
 
 const submissionSchema = z.object({
   attemptId: z.string().uuid(),
@@ -11,7 +11,7 @@ const submissionSchema = z.object({
     .array(
       z.object({
         questionId: z.string().uuid(),
-        selected: z.enum(["A", "B", "C"]),
+        selected: z.enum(["A", "B", "C", "D"]),
       }),
     )
     .min(1),
@@ -66,10 +66,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: questionsError?.message ?? "문항 조회 실패" }, { status: 500 });
   }
 
-  const questionLookup = new Map<string, { correct_answer: "A" | "B" | "C"; category: QuestionCategory }>();
+  const questionLookup = new Map<string, { correct_answer: "A" | "B" | "C" | "D"; category: QuestionCategory }>();
   questions.forEach((q) => {
     questionLookup.set(q.id, { 
-      correct_answer: q.correct_answer as "A" | "B" | "C",
+      correct_answer: q.correct_answer as "A" | "B" | "C" | "D",
       category: q.category as QuestionCategory
     });
   });
@@ -111,13 +111,13 @@ export async function POST(request: Request) {
   const totalCount = responsesToInsert.length;
   const score = Math.round((correctCount / totalCount) * 100);
 
-  const report = await generateReport({
-    studentName: student.name ?? null,
-    score,
-    correct: correctCount,
-    total: totalCount,
-    categoryScores,
-  });
+  // const report = await generateReport({
+  //   studentName: student.name ?? null,
+  //   score,
+  //   correct: correctCount,
+  //   total: totalCount,
+  //   categoryScores,
+  // });
 
   const { error: attemptUpdateError } = await supabase
     .from("attempts")
@@ -127,10 +127,10 @@ export async function POST(request: Request) {
       cs_score: categoryScores.cs.correct,
       collab_score: categoryScores.collab.correct,
       ai_score: categoryScores.ai.correct,
-      report: {
-        ...report,
-        generated_at: new Date().toISOString(),
-      },
+      // report: {
+      //   ...report,
+      //   generated_at: new Date().toISOString(),
+      // },
     })
     .eq("id", parse.data.attemptId);
 
@@ -145,6 +145,6 @@ export async function POST(request: Request) {
     cs_score: categoryScores.cs.correct,
     collab_score: categoryScores.collab.correct,
     ai_score: categoryScores.ai.correct,
-    report,
+    // report,
   });
 }

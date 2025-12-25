@@ -8,9 +8,7 @@ export async function GET() {
   const supabase = getServiceSupabase();
   const { data, error } = await supabase
     .from("questions")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(30);
+    .select("*");
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

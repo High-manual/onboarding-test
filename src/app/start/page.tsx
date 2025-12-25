@@ -147,9 +147,8 @@ export default function StartPage() {
           lineHeight: 1.6
         }}>
           <strong style={{ color: "#374151" }}>안내사항</strong><br />
-          • 총 30문항 (CS, 협업, AI 각 10문항)<br />
+          • 총 50문항 (CS 15, 협업 15, AI 20)<br />
           • 제출 후 즉시 결과 확인 가능<br />
-          • 익명 로그인으로 개인정보 보호
         </div>
       </div>
     </main>
