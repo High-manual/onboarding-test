@@ -93,8 +93,74 @@ function ResultContent() {
 
   if (!sessionToken || loading) {
     return (
-      <main style={{ maxWidth: 800, margin: "0 auto", padding: "48px 16px" }}>
-        <p>로딩 중...</p>
+      <main
+        style={{
+          minHeight: "100vh",
+          background: "#f9fafb",
+          padding: "24px 16px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 800,
+            width: "100%",
+            background: "white",
+            borderRadius: 12,
+            padding: "48px 24px",
+            boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
+            textAlign: "center",
+          }}
+        >
+          <div
+            style={{
+              width: 64,
+              height: 64,
+              margin: "0 auto 24px",
+              position: "relative",
+            }}
+          >
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                border: "4px solid #e5e7eb",
+                borderTop: "4px solid #667eea",
+                borderRadius: "50%",
+                animation: "spin 1s linear infinite",
+              }}
+            />
+            <style>
+              {`
+                @keyframes spin {
+                  0% { transform: rotate(0deg); }
+                  100% { transform: rotate(360deg); }
+                }
+              `}
+            </style>
+          </div>
+          <p
+            style={{
+              fontSize: "18px",
+              fontWeight: 600,
+              color: "#374151",
+              margin: 0,
+            }}
+          >
+            결과를 불러오는 중...
+          </p>
+          <p
+            style={{
+              fontSize: "14px",
+              color: "#6b7280",
+              margin: "8px 0 0",
+            }}
+          >
+            잠시만 기다려주세요
+          </p>
+        </div>
       </main>
     );
   }
@@ -492,8 +558,74 @@ export default function ResultPage() {
   return (
     <Suspense
       fallback={
-        <main style={{ maxWidth: 800, margin: "0 auto", padding: "48px 16px" }}>
-          <p>로딩 중...</p>
+        <main
+          style={{
+            minHeight: "100vh",
+            background: "#f9fafb",
+            padding: "24px 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            style={{
+              maxWidth: 800,
+              width: "100%",
+              background: "white",
+              borderRadius: 12,
+              padding: "48px 24px",
+              boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                margin: "0 auto 24px",
+                position: "relative",
+              }}
+            >
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  border: "4px solid #e5e7eb",
+                  borderTop: "4px solid #667eea",
+                  borderRadius: "50%",
+                  animation: "spin 1s linear infinite",
+                }}
+              />
+              <style>
+                {`
+                  @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                  }
+                `}
+              </style>
+            </div>
+            <p
+              style={{
+                fontSize: "18px",
+                fontWeight: 600,
+                color: "#374151",
+                margin: 0,
+              }}
+            >
+              결과를 불러오는 중...
+            </p>
+            <p
+              style={{
+                fontSize: "14px",
+                color: "#6b7280",
+                margin: "8px 0 0",
+              }}
+            >
+              잠시만 기다려주세요
+            </p>
+          </div>
         </main>
       }
     >
