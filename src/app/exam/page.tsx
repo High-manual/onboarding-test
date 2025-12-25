@@ -5,20 +5,6 @@ import { useRouter } from "next/navigation";
 import { getBrowserSupabaseClient } from "@/lib/supabase/client";
 import type { Attempt, Question } from "@/lib/types";
 
-interface SubmissionResult {
-  score: number;
-  correct: number;
-  total: number;
-  cs_score: number;
-  collab_score: number;
-  ai_score: number;
-  // report: {
-  //   summary: string;
-  //   strengths: string[];
-  //   weaknesses: string[];
-  //   recommendations: string[];
-  // };
-}
 
 function getCategoryLabel(category?: string | null): string | null {
   if (!category) return null;
@@ -41,15 +27,62 @@ export default function ExamPage() {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
-  const [answers, setAnswers] = useState<Record<string, "A" | "B" | "C" | "D">>(
+  const [answers, setAnswers] = useState<Record<string, "A" | "B" | "C" | "D" | "X">>(
     {}
   );
   const [status, setStatus] = useState<"idle" | "loading" | "submitting" | "done">(
     "idle"
   );
-  const [result, setResult] = useState<SubmissionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(1080); // 18분 = 1080초
+  const [isTimerActive, setIsTimerActive] = useState(false);
+  const [hasAutoSubmitted, setHasAutoSubmitted] = useState(false);
+
+  // localStorage에서 답변 및 시간 복원
+  useEffect(() => {
+    const savedAnswers = localStorage.getItem("exam_answers");
+    const savedIndex = localStorage.getItem("exam_current_index");
+    const savedTime = localStorage.getItem("exam_time_left");
+    const savedStartTime = localStorage.getItem("exam_start_time");
+    
+    if (savedAnswers) {
+      try {
+        setAnswers(JSON.parse(savedAnswers));
+      } catch (e) {
+        console.error("Failed to parse saved answers:", e);
+      }
+    }
+    
+    if (savedIndex) {
+      try {
+        setCurrentIndex(parseInt(savedIndex, 10));
+      } catch (e) {
+        console.error("Failed to parse saved index:", e);
+      }
+    }
+
+    // 시간 복원: 시작 시간이 있으면 경과 시간 계산, 없으면 저장된 시간 사용
+    if (savedStartTime) {
+      try {
+        const startTime = parseInt(savedStartTime, 10);
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const remaining = Math.max(0, 1200 - elapsed);
+        setTimeLeft(remaining);
+      } catch (e) {
+        console.error("Failed to parse saved start time:", e);
+      }
+    } else if (savedTime) {
+      try {
+        setTimeLeft(parseInt(savedTime, 10));
+      } catch (e) {
+        console.error("Failed to parse saved time:", e);
+      }
+    }
+    
+    setIsInitialized(true);
+  }, []);
 
   useEffect(() => {
     const fetchSession = async () => {
@@ -111,6 +144,109 @@ export default function ExamPage() {
     load();
   }, [sessionToken]);
 
+  // 답변 변경 시 localStorage에 저장
+  useEffect(() => {
+    if (isInitialized) {
+      localStorage.setItem("exam_answers", JSON.stringify(answers));
+    }
+  }, [answers, isInitialized]);
+
+  // 현재 문제 인덱스 변경 시 localStorage에 저장
+  useEffect(() => {
+    if (isInitialized) {
+      localStorage.setItem("exam_current_index", currentIndex.toString());
+    }
+  }, [currentIndex, isInitialized]);
+
+  // 시험 시작 시 타이머 시작
+  useEffect(() => {
+    if (questions.length > 0 && attempt && !isTimerActive && status === "idle") {
+      const savedStartTime = localStorage.getItem("exam_start_time");
+      if (!savedStartTime) {
+        // 처음 시작하는 경우 시작 시간 저장
+        localStorage.setItem("exam_start_time", Date.now().toString());
+      }
+      setIsTimerActive(true);
+    }
+  }, [questions.length, attempt, isTimerActive, status]);
+
+  // 시간 초과 시 자동 제출 (한 번만 실행)
+  useEffect(() => {
+    if (!isTimerActive || status !== "idle" || hasAutoSubmitted) return;
+    if (timeLeft > 0) return;
+
+    // 시간 초과 시 모든 미답변 문제를 X로 처리하고 자동 제출
+    setIsTimerActive(false);
+    setHasAutoSubmitted(true);
+    
+    const updatedAnswers = { ...answers };
+    questions.forEach((q) => {
+      if (!updatedAnswers[q.id]) {
+        updatedAnswers[q.id] = "X" as "A" | "B" | "C" | "D";
+      }
+    });
+    
+    setAnswers(updatedAnswers);
+    
+    // 자동 제출
+    if (attempt && sessionToken) {
+      const payload = {
+        attemptId: attempt.id,
+        responses: Object.entries(updatedAnswers)
+          .filter(([_, selected]) => ["A", "B", "C", "D", "X"].includes(selected))
+          .map(([questionId, selected]) => ({
+            questionId,
+            selected: selected as "A" | "B" | "C" | "D" | "X",
+          })),
+      };
+
+      fetch("/api/submit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionToken}`,
+        },
+        body: JSON.stringify(payload),
+      })
+        .then(async (response) => {
+          const json = await response.json();
+          if (!response.ok) {
+            setError(json.error ?? "시간 초과로 인한 자동 제출에 실패했습니다.");
+            setStatus("idle");
+            return;
+          }
+          localStorage.removeItem("exam_answers");
+          localStorage.removeItem("exam_current_index");
+          localStorage.removeItem("exam_time_left");
+          localStorage.removeItem("exam_start_time");
+          // 결과 페이지로 리다이렉트
+          router.push(`/result?attemptId=${attempt.id}`);
+        })
+        .catch((err) => {
+          setError("시간 초과로 인한 자동 제출에 실패했습니다.");
+          setStatus("idle");
+        });
+    }
+  }, [timeLeft, isTimerActive, status, hasAutoSubmitted, questions, answers, attempt, sessionToken, router]);
+
+  // 타이머 로직
+  useEffect(() => {
+    if (!isTimerActive || status !== "idle" || timeLeft <= 0) return;
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        const newTime = Math.max(0, prev - 1);
+        // localStorage에 시간 저장
+        if (isInitialized) {
+          localStorage.setItem("exam_time_left", newTime.toString());
+        }
+        return newTime;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isTimerActive, status, timeLeft, isInitialized]);
+
   const handleSelect = (questionId: string, selected: "A" | "B" | "C" | "D") => {
     setAnswers((prev) => ({ ...prev, [questionId]: selected }));
   };
@@ -136,10 +272,12 @@ export default function ExamPage() {
 
     const payload = {
       attemptId: attempt.id,
-      responses: Object.entries(answers).map(([questionId, selected]) => ({
-        questionId,
-        selected,
-      })),
+      responses: Object.entries(answers)
+        .filter(([_, selected]) => ["A", "B", "C", "D", "X"].includes(selected))
+        .map(([questionId, selected]) => ({
+          questionId,
+          selected: selected as "A" | "B" | "C" | "D" | "X",
+        })),
     };
 
     const response = await fetch("/api/submit", {
@@ -158,13 +296,27 @@ export default function ExamPage() {
       return;
     }
 
-    setResult(json);
-    setStatus("done");
+    // 제출 성공 시 localStorage 정리
+    localStorage.removeItem("exam_answers");
+    localStorage.removeItem("exam_current_index");
+    localStorage.removeItem("exam_time_left");
+    localStorage.removeItem("exam_start_time");
+    setIsTimerActive(false);
+
+    // 결과 페이지로 리다이렉트
+    router.push(`/result?attemptId=${attempt.id}`);
   };
 
   const currentQuestion = questions[currentIndex];
   const progressText = `${currentIndex + 1} / ${questions.length || 1}`;
   const categoryLabel = currentQuestion ? getCategoryLabel(currentQuestion.category) : null;
+  
+  // 시간을 분:초 형식으로 변환
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
 
   if (!sessionToken) {
     return (
@@ -201,17 +353,34 @@ export default function ExamPage() {
             </h1>
             <p style={{ color: "#6b7280", marginTop: 4, margin: 0 }}>총 30문항</p>
           </div>
-          <div
-            style={{
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-              color: "white",
-              padding: "8px 16px",
-              borderRadius: 8,
-              fontWeight: 700,
-              fontSize: "18px",
-            }}
-          >
-            {progressText}
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <div
+              style={{
+                background: timeLeft <= 60 ? "#ef4444" : timeLeft <= 300 ? "#f59e0b" : "#10b981",
+                color: "white",
+                padding: "8px 16px",
+                borderRadius: 8,
+                fontWeight: 700,
+                fontSize: "18px",
+                minWidth: 80,
+                textAlign: "center",
+                transition: "background 0.3s",
+              }}
+            >
+              {formatTime(timeLeft)}
+            </div>
+            <div
+              style={{
+                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                color: "white",
+                padding: "8px 16px",
+                borderRadius: 8,
+                fontWeight: 700,
+                fontSize: "18px",
+              }}
+            >
+              {progressText}
+            </div>
           </div>
         </header>
 
@@ -439,211 +608,6 @@ export default function ExamPage() {
           </button>
         </div>
 
-        {result && (
-          <div
-            style={{
-              background: "white",
-              borderRadius: 12,
-              padding: 24,
-              marginTop: 20,
-              boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
-            }}
-          >
-            <h2 style={{ margin: "0 0 20px", fontSize: "24px", fontWeight: 700 }}>
-              시험 결과
-            </h2>
-
-            <div
-              style={{
-                background: "#f9fafb",
-                borderRadius: 8,
-                padding: 20,
-                marginBottom: 24,
-                textAlign: "center",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "48px",
-                  fontWeight: 700,
-                  color: "#111827",
-                  marginBottom: 8,
-                }}
-              >
-                {result.score}점
-              </div>
-              <div style={{ color: "#6b7280", fontSize: "16px" }}>
-                정답: {result.correct} / {result.total}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 24 }}>
-              <h3 style={{ margin: "0 0 16px", fontSize: "18px", fontWeight: 600 }}>
-                역량별 분석
-              </h3>
-
-              <div style={{ display: "grid", gap: 12 }}>
-                {[
-                  { label: "CS 역량", score: result.cs_score, total: 15, color: "#3b82f6" },
-                  { label: "협업 역량", score: result.collab_score, total: 15, color: "#10b981" },
-                  { label: "AI 역량", score: result.ai_score, total: 20, color: "#8b5cf6" },
-                ].map((item) => {
-                  const percentage = (item.score / item.total) * 100;
-                  return (
-                    <div key={item.label}>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          marginBottom: 6,
-                          fontSize: "14px",
-                          fontWeight: 600,
-                        }}
-                      >
-                        <span>{item.label}</span>
-                        <span>
-                          {item.score} / {item.total}
-                        </span>
-                      </div>
-
-                      <div
-                        style={{
-                          width: "100%",
-                          height: 12,
-                          background: "#e5e7eb",
-                          borderRadius: 6,
-                          overflow: "hidden",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: `${percentage}%`,
-                            height: "100%",
-                            background: item.color,
-                            transition: "width 0.3s ease",
-                          }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div
-              style={{
-                background: "#f0fdf4",
-                border: "1px solid #bbf7d0",
-                borderRadius: 8,
-                padding: 16,
-                marginBottom: 16,
-              }}
-            >
-              {/* <h3
-                style={{
-                  margin: "0 0 8px",
-                  fontSize: "16px",
-                  fontWeight: 600,
-                  color: "#166534",
-                }}
-              >
-                요약
-              </h3>
-              <p style={{ margin: 0, color: "#15803d", lineHeight: 1.6 }}>
-                {result.report.summary}
-              </p> */}
-            </div>
-
-            {/* {result.report.strengths.length > 0 && (
-              <div
-                style={{
-                  background: "#eff6ff",
-                  border: "1px solid #bfdbfe",
-                  borderRadius: 8,
-                  padding: 16,
-                  marginBottom: 16,
-                }}
-              >
-                <h3
-                  style={{
-                    margin: "0 0 8px",
-                    fontSize: "16px",
-                    fontWeight: 600,
-                    color: "#1e40af",
-                  }}
-                >
-                  강점
-                </h3>
-                <ul style={{ margin: 0, paddingLeft: 20, color: "#1e40af" }}>
-                  {result.report.strengths.map((item, index) => (
-                    <li key={`${item}-${index}`} style={{ marginBottom: 4 }}>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {result.report.weaknesses.length > 0 && (
-              <div
-                style={{
-                  background: "#fef2f2",
-                  border: "1px solid #fecaca",
-                  borderRadius: 8,
-                  padding: 16,
-                  marginBottom: 16,
-                }}
-              >
-                <h3
-                  style={{
-                    margin: "0 0 8px",
-                    fontSize: "16px",
-                    fontWeight: 600,
-                    color: "#991b1b",
-                  }}
-                >
-                  보완이 필요한 부분
-                </h3>
-                <ul style={{ margin: 0, paddingLeft: 20, color: "#991b1b" }}>
-                  {result.report.weaknesses.map((item, index) => (
-                    <li key={`${item}-${index}`} style={{ marginBottom: 4 }}>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {result.report.recommendations.length > 0 && (
-              <div
-                style={{
-                  background: "#fefce8",
-                  border: "1px solid #fde047",
-                  borderRadius: 8,
-                  padding: 16,
-                }}
-              >
-                <h3
-                  style={{
-                    margin: "0 0 8px",
-                    fontSize: "16px",
-                    fontWeight: 600,
-                    color: "#854d0e",
-                  }}
-                >
-                  추천 사항
-                </h3>
-                <ul style={{ margin: 0, paddingLeft: 20, color: "#854d0e" }}>
-                  {result.report.recommendations.map((item, index) => (
-                    <li key={`${item}-${index}`} style={{ marginBottom: 4 }}>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )} */}
-          </div>
-        )}
       </div>
     </main>
   );
