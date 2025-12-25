@@ -33,6 +33,10 @@ export default function AdminAttemptsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [showTeams, setShowTeams] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const [savedTeamSize, setSavedTeamSize] = useState<number | null>(null);
+  const [savedMode, setSavedMode] = useState<"rank" | "balanced" | null>(null);
 
   const loadAttempts = async () => {
     const response = await fetch("/api/admin/attempts");
@@ -46,12 +50,33 @@ export default function AdminAttemptsPage() {
 
   useEffect(() => {
     loadAttempts();
+    loadSavedTeams();
   }, []);
+
+  const loadSavedTeams = async () => {
+    const response = await fetch("/api/admin/teams");
+    const json = await response.json();
+    if (response.ok && json.teams) {
+      const loadedTeams: Team[] = json.teams.map((t: any) => ({
+        team_number: t.team_number,
+        members: t.members.map((m: any) => ({
+          student_id: m.student_id,
+          student_name: m.student_name,
+          score: m.score,
+        })),
+      }));
+      setTeams(loadedTeams);
+      setShowTeams(true);
+      setIsSaved(true);
+      setSavedTeamSize(json.teamRun?.team_size ?? null);
+      setSavedMode(json.teamRun?.mode ?? null);
+      setMessage("저장된 팀을 불러왔습니다.");
+    }
+  };
 
   const handleTeamRun = async () => {
     setMessage(null);
     setError(null);
-    setShowTeams(false);
 
     // 제출한 학생만 필터링
     const submittedAttempts = attempts.filter(a => a.score !== null && a.submitted_at);
@@ -79,52 +104,30 @@ export default function AdminAttemptsPage() {
       return;
     }
     
-    // 팀 매칭 결과 표시
-    const generatedTeams: Team[] = [];
-    for (let i = 0; i < numTeams; i++) {
-      generatedTeams.push({ team_number: i + 1, members: [] });
-    }
-
-    const sortedAttempts = [...submittedAttempts].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-    
-    if (matchingMode === "rank") {
-      // 라운드로빈 방식으로 팀 배정
-      sortedAttempts.forEach((attempt, index) => {
-        const teamIndex = index % numTeams;
-        generatedTeams[teamIndex].members.push({
-          student_id: attempt.student_id,
-          student_name: attempt.students?.name ?? "익명",
-          score: attempt.score ?? 0
-        });
-      });
-    } else {
-      // 역량 균형 방식 (지그재그)
-      let teamIndex = 0;
-      let direction = 1;
-      sortedAttempts.forEach((attempt) => {
-        generatedTeams[teamIndex].members.push({
-          student_id: attempt.student_id,
-          student_name: attempt.students?.name ?? "익명",
-          score: attempt.score ?? 0
-        });
-        teamIndex += direction;
-        if (teamIndex >= numTeams) {
-          teamIndex = numTeams - 1;
-          direction = -1;
-        } else if (teamIndex < 0) {
-          teamIndex = 0;
-          direction = 1;
-        }
-      });
-    }
+    // API에서 반환된 팀 데이터를 사용
+    const generatedTeams: Team[] = json.teams.map((t: any) => ({
+      team_number: t.team_number,
+      members: t.members.map((m: any) => {
+        const attempt = attempts.find(a => a.student_id === m.student_id);
+        return {
+          student_id: m.student_id,
+          student_name: attempt?.students?.name ?? "익명",
+          score: m.score ?? attempt?.score ?? 0,
+        };
+      }),
+    }));
 
     setTeams(generatedTeams);
     setShowTeams(true);
+    setIsSaved(false);
+    setIsEditMode(true);
     const modeLabel = matchingMode === "balanced" ? "역량 균형" : "점수 순";
-    setMessage(`팀 매칭 생성 완료 (${numTeams}개 팀, 방식: ${modeLabel})`);
+    setMessage(`팀 매칭 생성 완료 (${json.teamCount}개 팀, 방식: ${modeLabel}) - 저장 버튼을 눌러 저장하세요.`);
   };
 
   const moveStudent = (fromTeam: number, toTeam: number, studentId: string) => {
+    if (!isEditMode) return;
+    
     const newTeams = [...teams];
     const fromTeamData = newTeams.find(t => t.team_number === fromTeam);
     const toTeamData = newTeams.find(t => t.team_number === toTeam);
@@ -139,7 +142,55 @@ export default function AdminAttemptsPage() {
     toTeamData.members.push(member);
     
     setTeams(newTeams);
-    setMessage("팀 편성이 수정되었습니다.");
+    setIsSaved(false);
+    setMessage("팀 편성이 수정되었습니다. 저장 버튼을 눌러 저장하세요.");
+  };
+
+  const handleSave = async () => {
+    setMessage(null);
+    setError(null);
+
+    if (teams.length === 0) {
+      setError("저장할 팀이 없습니다.");
+      return;
+    }
+
+    const submittedAttempts = attempts.filter(a => a.score !== null && a.submitted_at);
+    const teamSize = Math.ceil(submittedAttempts.length / teams.length);
+
+    const response = await fetch("/api/admin/teams", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        teams: teams.map(t => ({
+          team_number: t.team_number,
+          members: t.members.map(m => ({
+            student_id: m.student_id,
+            reason: null,
+          })),
+        })),
+        teamSize,
+        mode: matchingMode,
+      }),
+    });
+
+    const json = await response.json();
+    if (!response.ok) {
+      setError(json.error ?? "저장 실패");
+      return;
+    }
+
+    setIsSaved(true);
+    setIsEditMode(false);
+    setSavedTeamSize(teamSize);
+    setSavedMode(matchingMode);
+    setMessage("팀이 저장되었습니다.");
+  };
+
+  const handleEdit = () => {
+    setIsEditMode(true);
+    setIsSaved(false);
+    setMessage("수정 모드입니다. 팀을 수정한 후 저장 버튼을 눌러주세요.");
   };
 
   return (
@@ -258,7 +309,59 @@ export default function AdminAttemptsPage() {
             marginBottom: 20,
             boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)"
           }}>
-            <h2 style={{ margin: "0 0 20px", fontSize: "22px", fontWeight: 700 }}>팀 매칭 결과</h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ margin: 0, fontSize: "22px", fontWeight: 700 }}>
+                {isSaved ? "저장된 팀" : "팀 매칭 결과"}
+              </h2>
+              <div style={{ display: "flex", gap: 8 }}>
+                {isSaved && !isEditMode && (
+                  <button
+                    onClick={handleEdit}
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: 6,
+                      background: "#3b82f6",
+                      color: "white",
+                      border: "none",
+                      fontWeight: 600,
+                      fontSize: "14px",
+                      cursor: "pointer"
+                    }}
+                  >
+                    수정하기
+                  </button>
+                )}
+                {isEditMode && (
+                  <button
+                    onClick={handleSave}
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: 6,
+                      background: "#10b981",
+                      color: "white",
+                      border: "none",
+                      fontWeight: 600,
+                      fontSize: "14px",
+                      cursor: "pointer"
+                    }}
+                  >
+                    저장
+                  </button>
+                )}
+              </div>
+            </div>
+            {isSaved && !isEditMode && savedTeamSize && savedMode && (
+              <div style={{ 
+                marginBottom: 16, 
+                padding: 12, 
+                background: "#f0f9ff", 
+                borderRadius: 8,
+                fontSize: "14px",
+                color: "#1e40af"
+              }}>
+                팀 크기: {savedTeamSize}명 | 방식: {savedMode === "balanced" ? "역량 균형" : "점수 순"}
+              </div>
+            )}
             <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
               {teams.map((team) => {
                 const avgScore = team.members.length > 0
@@ -306,29 +409,39 @@ export default function AdminAttemptsPage() {
                             <div style={{ fontWeight: 600, fontSize: "14px" }}>{member.student_name}</div>
                             <div style={{ fontSize: "12px", color: "#6b7280" }}>{member.score}점</div>
                           </div>
-                          <select
-                            onChange={(e) => {
-                              const toTeam = Number(e.target.value);
-                              if (toTeam !== team.team_number) {
-                                moveStudent(team.team_number, toTeam, member.student_id);
-                              }
-                              e.target.value = String(team.team_number);
-                            }}
-                            defaultValue={team.team_number}
-                            style={{
-                              padding: "4px 8px",
-                              borderRadius: 6,
-                              border: "1px solid #d1d5db",
-                              fontSize: "12px",
-                              cursor: "pointer"
-                            }}
-                          >
-                            {teams.map(t => (
-                              <option key={t.team_number} value={t.team_number}>
-                                팀 {t.team_number}
-                              </option>
-                            ))}
-                          </select>
+                          {isEditMode ? (
+                            <select
+                              onChange={(e) => {
+                                const toTeam = Number(e.target.value);
+                                if (toTeam !== team.team_number) {
+                                  moveStudent(team.team_number, toTeam, member.student_id);
+                                }
+                                e.target.value = String(team.team_number);
+                              }}
+                              defaultValue={team.team_number}
+                              style={{
+                                padding: "4px 8px",
+                                borderRadius: 6,
+                                border: "1px solid #d1d5db",
+                                fontSize: "12px",
+                                cursor: "pointer"
+                              }}
+                            >
+                              {teams.map(t => (
+                                <option key={t.team_number} value={t.team_number}>
+                                  팀 {t.team_number}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span style={{ 
+                              fontSize: "12px", 
+                              color: "#6b7280",
+                              fontWeight: 600
+                            }}>
+                              팀 {team.team_number}
+                            </span>
+                          )}
                         </div>
                       ))}
                       {team.members.length === 0 && (

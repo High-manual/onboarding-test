@@ -38,39 +38,21 @@ export async function POST(request: Request) {
 
   const { teamCount, assignments } = await matchTeams(attempts, parse.data.teamSize, parse.data.mode);
 
-  const { data: teamRun, error: teamRunError } = await supabase
-    .from("team_runs")
-    .insert({ team_size: parse.data.teamSize, mode: parse.data.mode })
-    .select()
-    .single();
-
-  if (teamRunError || !teamRun) {
-    return NextResponse.json({ error: teamRunError?.message ?? "팀 매칭을 생성하지 못했습니다." }, { status: 500 });
-  }
-
-  const teamsToCreate = Array.from({ length: teamCount }).map((_, index) => ({
-    run_id: teamRun.id,
+  // DB에 저장하지 않고 결과만 반환 (보기 전용)
+  const teams = Array.from({ length: teamCount }).map((_, index) => ({
     team_number: index + 1,
+    members: assignments
+      .filter(a => a.teamIndex === index)
+      .map(a => {
+        const attempt = attempts.find(at => at.student_id === a.studentId);
+        return {
+          student_id: a.studentId,
+          attempt_id: a.attemptId,
+          reason: a.reason,
+          score: attempt?.score ?? 0,
+        };
+      }),
   }));
 
-  const { data: teams, error: teamsError } = await supabase.from("teams").insert(teamsToCreate).select();
-
-  if (teamsError || !teams) {
-    return NextResponse.json({ error: teamsError?.message ?? "팀 생성 실패" }, { status: 500 });
-  }
-
-  const members = assignments.map((assignment) => ({
-    team_id: teams[assignment.teamIndex].id,
-    student_id: assignment.studentId,
-    reason: assignment.reason,
-  }));
-
-  if (members.length > 0) {
-    const { error: membersError } = await supabase.from("team_members").insert(members);
-    if (membersError) {
-      return NextResponse.json({ error: membersError.message }, { status: 500 });
-    }
-  }
-
-  return NextResponse.json({ teamRun, teams, members, teamCount, mode: parse.data.mode });
+  return NextResponse.json({ teams, teamCount, mode: parse.data.mode, teamSize: parse.data.teamSize });
 }
