@@ -17,6 +17,7 @@ interface AttemptRow {
     collab: { total: number; correct: number; pass: number };
     ai: { total: number; correct: number; pass: number };
   };
+  timeout_count?: number;
 }
 
 interface TeamMember {
@@ -505,7 +506,16 @@ export default function AdminAttemptsPage() {
                       <tr key={attempt.id} style={{ 
                         background: attempt.submitted_at ? "white" : "#fef9c3" 
                       }}>
-                        <td style={tdStyle}>{attempt.students?.name ?? "익명"}</td>
+                        <td style={tdStyle}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                            <span>{attempt.students?.name ?? "익명"}</span>
+                            {attempt.timeout_count !== undefined && attempt.timeout_count > 0 && (
+                              <span style={{ fontSize: "12px", color: "#dc2626", fontWeight: 600 }}>
+                                시간 초과: {attempt.timeout_count}개
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td style={{ ...tdStyle, fontWeight: 700 }}>{attempt.score ?? "-"}</td>
                         <td style={tdStyle}>
                           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>

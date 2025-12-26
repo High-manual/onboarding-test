@@ -80,6 +80,8 @@ export async function GET() {
       ai: { total: 0, correct: 0, pass: 0 },
     };
 
+    let timeoutCount = 0;
+
     attemptResponses.forEach((response) => {
       const category = questionMap.get(response.question_id);
       if (category && category in categoryStats) {
@@ -91,11 +93,15 @@ export async function GET() {
           categoryStats[category].pass += 1;
         }
       }
+      if (response.selected_answer === "X") {
+        timeoutCount += 1;
+      }
     });
 
     return {
       ...attempt,
       category_stats: categoryStats,
+      timeout_count: timeoutCount,
     };
   });
 
