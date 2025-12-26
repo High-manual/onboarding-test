@@ -27,7 +27,7 @@ export default function ExamPage() {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
-  const [answers, setAnswers] = useState<Record<string, "A" | "B" | "C" | "D" | "X">>(
+  const [answers, setAnswers] = useState<Record<string, "A" | "B" | "C" | "D" | "E" | "X">>(
     {}
   );
   const [status, setStatus] = useState<"idle" | "loading" | "submitting" | "done">(
@@ -182,7 +182,7 @@ export default function ExamPage() {
     const updatedAnswers = { ...answers };
     questions.forEach((q) => {
       if (!updatedAnswers[q.id]) {
-        updatedAnswers[q.id] = "X" as "A" | "B" | "C" | "D";
+        updatedAnswers[q.id] = "X" as "A" | "B" | "C" | "D" | "E";
       }
     });
     
@@ -193,10 +193,10 @@ export default function ExamPage() {
       const payload = {
         attemptId: attempt.id,
         responses: Object.entries(updatedAnswers)
-          .filter(([_, selected]) => ["A", "B", "C", "D", "X"].includes(selected))
+          .filter(([_, selected]) => ["A", "B", "C", "D", "E", "X"].includes(selected))
           .map(([questionId, selected]) => ({
             questionId,
-            selected: selected as "A" | "B" | "C" | "D" | "X",
+            selected: selected as "A" | "B" | "C" | "D" | "E" | "X",
           })),
       };
 
@@ -247,7 +247,7 @@ export default function ExamPage() {
     return () => clearInterval(timer);
   }, [isTimerActive, status, timeLeft, isInitialized]);
 
-  const handleSelect = (questionId: string, selected: "A" | "B" | "C" | "D") => {
+  const handleSelect = (questionId: string, selected: "A" | "B" | "C" | "D" | "E") => {
     setAnswers((prev) => ({ ...prev, [questionId]: selected }));
   };
 
@@ -273,10 +273,10 @@ export default function ExamPage() {
     const payload = {
       attemptId: attempt.id,
       responses: Object.entries(answers)
-        .filter(([_, selected]) => ["A", "B", "C", "D", "X"].includes(selected))
+        .filter(([_, selected]) => ["A", "B", "C", "D", "E", "X"].includes(selected))
         .map(([questionId, selected]) => ({
           questionId,
-          selected: selected as "A" | "B" | "C" | "D" | "X",
+          selected: selected as "A" | "B" | "C" | "D" | "E" | "X",
         })),
     };
 
@@ -449,7 +449,7 @@ export default function ExamPage() {
             </p>
 
             <div style={{ display: "grid", gap: 12 }}>
-              {(["A", "B", "C", "D"] as const).map((choiceKey) => {
+              {(["A", "B", "C", "D", "E"] as const).map((choiceKey) => {
                 const choice =
                   choiceKey === "A"
                     ? currentQuestion.option_a
@@ -457,7 +457,9 @@ export default function ExamPage() {
                     ? currentQuestion.option_b
                     : choiceKey === "C"
                     ? currentQuestion.option_c
-                    : currentQuestion.option_d;
+                    : choiceKey === "D"
+                    ? currentQuestion.option_d
+                    : currentQuestion.option_e;
 
                 const isSelected = answers[currentQuestion.id] === choiceKey;
 

@@ -7,7 +7,8 @@ export interface Question {
   option_b: string;
   option_c: string;
   option_d: string;
-  correct_answer: "A" | "B" | "C" | "D";
+  option_e: string;
+  correct_answer: "A" | "B" | "C" | "D" | "E";
   category: QuestionCategory;
   created_at: string;
 }

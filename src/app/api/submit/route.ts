@@ -11,7 +11,7 @@ const submissionSchema = z.object({
     .array(
       z.object({
         questionId: z.string().uuid(),
-        selected: z.enum(["A", "B", "C", "D", "X"]),
+        selected: z.enum(["A", "B", "C", "D", "E", "X"]),
       }),
     )
     .min(1),
@@ -71,10 +71,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: questionsError?.message ?? "문항 조회 실패" }, { status: 500 });
   }
 
-  const questionLookup = new Map<string, { correct_answer: "A" | "B" | "C" | "D"; category: QuestionCategory }>();
+  const questionLookup = new Map<string, { correct_answer: "A" | "B" | "C" | "D" | "E"; category: QuestionCategory }>();
   questions.forEach((q) => {
     questionLookup.set(q.id, { 
-      correct_answer: q.correct_answer as "A" | "B" | "C" | "D",
+      correct_answer: q.correct_answer as "A" | "B" | "C" | "D" | "E",
       category: q.category as QuestionCategory
     });
   });

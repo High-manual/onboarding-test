@@ -10,7 +10,8 @@ async function getQuestionsFromDB() {
   const supabase = getServiceSupabase();
   const { data, error } = await supabase
     .from("questions")
-    .select("*");
+    .select("*")
+    .order("category", { ascending: true });
 
   if (error) {
     throw new Error(error.message);

@@ -7,7 +7,7 @@ import type { Attempt, Question } from "@/lib/types";
 
 interface ResultItem {
   question: Question;
-  selected: "A" | "B" | "C" | "D" | "X";
+  selected: "A" | "B" | "C" | "D" | "E" | "X";
   isCorrect: boolean;
 }
 
@@ -450,7 +450,7 @@ function ResultContent() {
                     )}
 
                     <div style={{ display: "grid", gap: 10 }}>
-                      {(["A", "B", "C", "D"] as const).map((choiceKey) => {
+                      {(["A", "B", "C", "D", "E"] as const).map((choiceKey) => {
                         const choice =
                           choiceKey === "A"
                             ? question.option_a
@@ -458,7 +458,9 @@ function ResultContent() {
                             ? question.option_b
                             : choiceKey === "C"
                             ? question.option_c
-                            : question.option_d;
+                            : choiceKey === "D"
+                            ? question.option_d
+                            : question.option_e;
 
                         const isSelected = selected === choiceKey;
                         const isCorrectAnswer = question.correct_answer === choiceKey;
