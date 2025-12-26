@@ -12,6 +12,11 @@ interface AttemptRow {
   created_at: string;
   submitted_at: string | null;
   students?: { name: string | null };
+  category_stats?: {
+    cs: { total: number; correct: number; pass: number };
+    collab: { total: number; correct: number; pass: number };
+    ai: { total: number; correct: number; pass: number };
+  };
 }
 
 interface TeamMember {
@@ -489,22 +494,57 @@ export default function AdminAttemptsPage() {
                     </td>
                   </tr>
                 ) : (
-                  attempts.map((attempt) => (
-                    <tr key={attempt.id} style={{ 
-                      background: attempt.submitted_at ? "white" : "#fef9c3" 
-                    }}>
-                      <td style={tdStyle}>{attempt.students?.name ?? "익명"}</td>
-                      <td style={{ ...tdStyle, fontWeight: 700 }}>{attempt.score ?? "-"}</td>
-                      <td style={tdStyle}>{attempt.cs_score ?? "-"}</td>
-                      <td style={tdStyle}>{attempt.collab_score ?? "-"}</td>
-                      <td style={tdStyle}>{attempt.ai_score ?? "-"}</td>
-                      <td style={tdStyle}>
-                        {attempt.submitted_at 
-                          ? new Date(attempt.submitted_at).toLocaleString("ko-KR") 
-                          : "미제출"}
-                      </td>
-                    </tr>
-                  ))
+                  attempts.map((attempt) => {
+                    const formatCategoryStats = (category: "cs" | "collab" | "ai") => {
+                      const stats = attempt.category_stats?.[category];
+                      if (!stats || stats.total === 0) return "-";
+                      return `${stats.correct}/${stats.total}${stats.pass > 0 ? ` (패스: ${stats.pass})` : ""}`;
+                    };
+
+                    return (
+                      <tr key={attempt.id} style={{ 
+                        background: attempt.submitted_at ? "white" : "#fef9c3" 
+                      }}>
+                        <td style={tdStyle}>{attempt.students?.name ?? "익명"}</td>
+                        <td style={{ ...tdStyle, fontWeight: 700 }}>{attempt.score ?? "-"}</td>
+                        <td style={tdStyle}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                            <span style={{ fontWeight: 600 }}>{attempt.cs_score ?? "-"}</span>
+                            {attempt.category_stats?.cs && attempt.category_stats.cs.total > 0 && (
+                              <span style={{ fontSize: "12px", color: "#6b7280" }}>
+                                {formatCategoryStats("cs")}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={tdStyle}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                            <span style={{ fontWeight: 600 }}>{attempt.collab_score ?? "-"}</span>
+                            {attempt.category_stats?.collab && attempt.category_stats.collab.total > 0 && (
+                              <span style={{ fontSize: "12px", color: "#6b7280" }}>
+                                {formatCategoryStats("collab")}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={tdStyle}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                            <span style={{ fontWeight: 600 }}>{attempt.ai_score ?? "-"}</span>
+                            {attempt.category_stats?.ai && attempt.category_stats.ai.total > 0 && (
+                              <span style={{ fontSize: "12px", color: "#6b7280" }}>
+                                {formatCategoryStats("ai")}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={tdStyle}>
+                          {attempt.submitted_at 
+                            ? new Date(attempt.submitted_at).toLocaleString("ko-KR") 
+                            : "미제출"}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
