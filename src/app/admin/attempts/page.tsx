@@ -13,9 +13,9 @@ interface AttemptRow {
   submitted_at: string | null;
   students?: { name: string | null };
   category_stats?: {
-    cs: { total: number; correct: number; pass: number };
-    collab: { total: number; correct: number; pass: number };
-    ai: { total: number; correct: number; pass: number };
+    cs: { total: number; correct: number; pass: number; timeout: number };
+    collab: { total: number; correct: number; pass: number; timeout: number };
+    ai: { total: number; correct: number; pass: number; timeout: number };
   };
   timeout_count?: number;
 }
@@ -30,6 +30,26 @@ interface Team {
   team_number: number;
   members: TeamMember[];
 }
+
+const formatDateKR = (dateString: string): string => {
+  const date = new Date(dateString);
+  const formatter = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "2-digit",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parts.find(p => p.type === "year")?.value ?? "";
+  const month = parts.find(p => p.type === "month")?.value ?? "";
+  const day = parts.find(p => p.type === "day")?.value ?? "";
+  const hour = parts.find(p => p.type === "hour")?.value?.padStart(2, '0') ?? "";
+  const minute = parts.find(p => p.type === "minute")?.value?.padStart(2, '0') ?? "";
+  return `${year}.${month}.${day} ${hour}:${minute}`;
+};
 
 export default function AdminAttemptsPage() {
   const [attempts, setAttempts] = useState<AttemptRow[]>([]);
@@ -475,15 +495,15 @@ export default function AdminAttemptsPage() {
           boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.1)"
         }}>
           <h2 style={{ margin: "0 0 16px", fontSize: "20px", fontWeight: 700 }}>전체 응시 목록</h2>
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto", maxHeight: "calc(100vh - 300px)", overflowY: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
+              <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
                 <tr style={{ background: "#f9fafb" }}>
                   <th style={thStyle}>이름</th>
                   <th style={thStyle}>총점</th>
-                  <th style={thStyle}>CS</th>
-                  <th style={thStyle}>협업</th>
-                  <th style={thStyle}>AI</th>
+                  <th style={{ ...thStyle, minWidth: 180 }}>CS 역량</th>
+                  <th style={{ ...thStyle, minWidth: 180 }}>협업 역량</th>
+                  <th style={{ ...thStyle, minWidth: 180 }}>AI 역량</th>
                   <th style={thStyle}>제출 시간</th>
                 </tr>
               </thead>
@@ -496,10 +516,150 @@ export default function AdminAttemptsPage() {
                   </tr>
                 ) : (
                   attempts.map((attempt) => {
-                    const formatCategoryStats = (category: "cs" | "collab" | "ai") => {
+                    const renderCategoryCell = (category: "cs" | "collab" | "ai", score: number | null) => {
                       const stats = attempt.category_stats?.[category];
-                      if (!stats || stats.total === 0) return "-";
-                      return `${stats.correct}/${stats.total}${stats.pass > 0 ? ` (패스: ${stats.pass})` : ""}`;
+                      const categoryLabels = {
+                        cs: { label: "CS", bg: "#eff6ff", color: "#1e40af" },
+                        collab: { label: "협업", bg: "#f0fdf4", color: "#166534" },
+                        ai: { label: "AI", bg: "#faf5ff", color: "#6b21a8" },
+                      };
+                      const categoryStyle = categoryLabels[category];
+
+                      if (!stats || stats.total === 0) {
+                        return (
+                          <div style={{ 
+                            padding: "12px",
+                            background: "#f9fafb",
+                            borderRadius: 8,
+                            border: "1px solid #e5e7eb",
+                            textAlign: "center"
+                          }}>
+                            <div style={{ 
+                              display: "inline-block",
+                              background: categoryStyle.bg,
+                              color: categoryStyle.color,
+                              padding: "4px 10px",
+                              borderRadius: 6,
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              marginBottom: 8
+                            }}>
+                              {categoryStyle.label}
+                            </div>
+                            <div style={{ fontWeight: 700, fontSize: "18px", color: "#9ca3af", marginTop: 4 }}>
+                              {score ?? "-"}
+                            </div>
+                            <div style={{ fontSize: "12px", color: "#9ca3af", marginTop: 4 }}>미응시</div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div style={{ 
+                          padding: "12px",
+                          background: "white",
+                          borderRadius: 8,
+                          border: "2px solid #e5e7eb",
+                          minWidth: 140
+                        }}>
+
+                          {/* 통계 아이템들 */}
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            {/* 정답 */}
+                            <div style={{ 
+                              display: "flex", 
+                              justifyContent: "space-between", 
+                              alignItems: "center",
+                              padding: "6px 8px",
+                              background: "rgba(236, 253, 245, 0.2)",
+                              borderRadius: 6,
+                              border: "1px solid rgba(167, 243, 208, 0.5)"
+                            }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ color: "#065f46", fontWeight: 600, fontSize: "13px" }}>
+                                  정답
+                                </span>
+                              </div>
+                              <span style={{ fontWeight: 700, color: "#111827", fontSize: "14px" }}>
+                                {stats.correct}
+                              </span>
+                            </div>
+
+                            {/* 패스 */}
+                            {stats.pass > 0 && (
+                              <div style={{ 
+                                display: "flex", 
+                                justifyContent: "space-between", 
+                                alignItems: "center",
+                                padding: "6px 8px",
+                                background: "#fffbeb",
+                                borderRadius: 6,
+                                border: "1px solid #fde68a"
+                              }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <div style={{
+                                    width: 8,
+                                    height: 8,
+                                    borderRadius: "50%",
+                                    background: "#f59e0b"
+                                  }} />
+                                  <span style={{ color: "#92400e", fontWeight: 600, fontSize: "13px" }}>
+                                    패스
+                                  </span>
+                                </div>
+                                <span style={{ fontWeight: 700, color: "#111827", fontSize: "14px" }}>
+                                  {stats.pass}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* 시간초과 */}
+                            {stats.timeout > 0 && (
+                              <div style={{ 
+                                display: "flex", 
+                                justifyContent: "space-between", 
+                                alignItems: "center",
+                                padding: "6px 8px",
+                                background: "#fef2f2",
+                                borderRadius: 6,
+                                border: "1px solid #fecaca"
+                              }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <div style={{
+                                    width: 8,
+                                    height: 8,
+                                    borderRadius: "50%",
+                                    background: "#ef4444"
+                                  }} />
+                                  <span style={{ color: "#991b1b", fontWeight: 600, fontSize: "13px" }}>
+                                    시간초과
+                                  </span>
+                                </div>
+                                <span style={{ fontWeight: 700, color: "#111827", fontSize: "14px" }}>
+                                  {stats.timeout}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* 전체 문제 수 */}
+                            {/* <div style={{
+                              borderTop: "1px solid #e5e7eb",
+                              paddingTop: 6,
+                              marginTop: 2,
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center"
+                            }}>
+                              <span style={{ color: "#6b7280", fontWeight: 500, fontSize: "12px" }}>
+                                전체
+                              </span>
+                              <span style={{ fontWeight: 600, color: "#374151", fontSize: "13px" }}>
+                                {stats.total}문제
+                              </span>
+                            </div> */}
+                          </div>
+                        </div>
+                      );
                     };
 
                     return (
@@ -507,50 +667,37 @@ export default function AdminAttemptsPage() {
                         background: attempt.submitted_at ? "white" : "#fef9c3" 
                       }}>
                         <td style={tdStyle}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                            <span>{attempt.students?.name ?? "익명"}</span>
-                            {attempt.timeout_count !== undefined && attempt.timeout_count > 0 && (
-                              <span style={{ fontSize: "12px", color: "#dc2626", fontWeight: 600 }}>
-                                시간 초과: {attempt.timeout_count}개
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td style={{ ...tdStyle, fontWeight: 700 }}>{attempt.score ?? "-"}</td>
-                        <td style={tdStyle}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                            <span style={{ fontWeight: 600 }}>{attempt.cs_score ?? "-"}</span>
-                            {attempt.category_stats?.cs && attempt.category_stats.cs.total > 0 && (
-                              <span style={{ fontSize: "12px", color: "#6b7280" }}>
-                                {formatCategoryStats("cs")}
-                              </span>
-                            )}
-                          </div>
+                          <span style={{ fontWeight: 600, fontSize: "15px" }}>
+                            {attempt.students?.name ?? "익명"}
+                          </span>
                         </td>
                         <td style={tdStyle}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                            <span style={{ fontWeight: 600 }}>{attempt.collab_score ?? "-"}</span>
-                            {attempt.category_stats?.collab && attempt.category_stats.collab.total > 0 && (
-                              <span style={{ fontSize: "12px", color: "#6b7280" }}>
-                                {formatCategoryStats("collab")}
-                              </span>
-                            )}
+                          <div style={{
+                            display: "inline-block",
+                            color: "black",
+                            borderRadius: 8,
+                            fontWeight: 700,
+                            fontSize: "16px",
+                            textAlign: "center"
+                          }}>
+                            {attempt.score ?? "-"}
                           </div>
                         </td>
-                        <td style={tdStyle}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                            <span style={{ fontWeight: 600 }}>{attempt.ai_score ?? "-"}</span>
-                            {attempt.category_stats?.ai && attempt.category_stats.ai.total > 0 && (
-                              <span style={{ fontSize: "12px", color: "#6b7280" }}>
-                                {formatCategoryStats("ai")}
-                              </span>
-                            )}
-                          </div>
+                        <td style={{ ...tdStyle, verticalAlign: "top", paddingTop: 16 }}>
+                          {renderCategoryCell("cs", attempt.cs_score)}
+                        </td>
+                        <td style={{ ...tdStyle, verticalAlign: "top", paddingTop: 16 }}>
+                          {renderCategoryCell("collab", attempt.collab_score)}
+                        </td>
+                        <td style={{ ...tdStyle, verticalAlign: "top", paddingTop: 16 }}>
+                          {renderCategoryCell("ai", attempt.ai_score)}
                         </td>
                         <td style={tdStyle}>
-                          {attempt.submitted_at 
-                            ? new Date(attempt.submitted_at).toLocaleString("ko-KR") 
-                            : "미제출"}
+                          <span style={{ fontSize: "13px", color: attempt.submitted_at ? "#111827" : "#9ca3af" }}>
+                            {attempt.submitted_at 
+                              ? formatDateKR(attempt.submitted_at)
+                              : "미제출"}
+                          </span>
                         </td>
                       </tr>
                     );
@@ -571,12 +718,17 @@ const thStyle: React.CSSProperties = {
   borderBottom: "2px solid #e5e7eb",
   fontSize: "14px",
   fontWeight: 700,
-  color: "#374151"
+  color: "#374151",
+  background: "#f9fafb",
+  position: "sticky",
+  top: 0,
+  zIndex: 10
 };
 
 const tdStyle: React.CSSProperties = {
-  padding: "12px 16px",
+  padding: "16px",
   borderBottom: "1px solid #f3f4f6",
   fontSize: "14px",
-  color: "#111827"
+  color: "#111827",
+  verticalAlign: "middle"
 };
