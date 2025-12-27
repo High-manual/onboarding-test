@@ -9,6 +9,7 @@ const serverSchema = browserSchema.extend({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   ADMIN_PASSWORD: z.string().min(1),
   OPENAI_API_KEY: z.string().min(1).optional(),
+  ATTEMPTS_STATS_VERSION: z.enum(["v1", "v2"]).default("v1"),
 });
 
 export type BrowserEnv = z.infer<typeof browserSchema>;
@@ -28,5 +29,6 @@ export function getServerEnv(): ServerEnv {
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    ATTEMPTS_STATS_VERSION: process.env.ATTEMPTS_STATS_VERSION as "v1" | "v2" | undefined,
   });
 }

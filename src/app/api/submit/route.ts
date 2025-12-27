@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getUserIdFromRequest } from "@/lib/auth/user";
 import { getServiceSupabase } from "@/lib/supabase/server";
+import { getServerEnv } from "@/lib/env";
 import type { QuestionCategory } from "@/lib/types";
 // import { generateReport } from "@/lib/langgraph/report";
 
@@ -91,11 +92,15 @@ export async function POST(request: Request) {
     };
   });
 
+  // 버전 확인
+  const env = getServerEnv();
+  const statsVersion = env.ATTEMPTS_STATS_VERSION || "v1";
+
   // 카테고리별 점수 계산
-  const categoryScores: Record<QuestionCategory, { correct: number; total: number }> = {
-    cs: { correct: 0, total: 0 },
-    collab: { correct: 0, total: 0 },
-    ai: { correct: 0, total: 0 },
+  const categoryScores: Record<QuestionCategory, { correct: number; total: number; pass: number; timeout: number }> = {
+    cs: { correct: 0, total: 0, pass: 0, timeout: 0 },
+    collab: { correct: 0, total: 0, pass: 0, timeout: 0 },
+    ai: { correct: 0, total: 0, pass: 0, timeout: 0 },
   };
 
   parse.data.responses.forEach((response, index) => {
@@ -104,6 +109,12 @@ export async function POST(request: Request) {
       categoryScores[question.category].total += 1;
       if (responsesToInsert[index].is_correct) {
         categoryScores[question.category].correct += 1;
+      }
+      if (response.selected === "E") {
+        categoryScores[question.category].pass += 1;
+      }
+      if (response.selected === "X") {
+        categoryScores[question.category].timeout += 1;
       }
     }
   });
@@ -128,19 +139,34 @@ export async function POST(request: Request) {
   // });
 
   // submitted_at이 null인 경우에만 업데이트 (중복 제출 방지)
+  const updateData: any = {
+    submitted_at: new Date().toISOString(),
+    score: score,
+    cs_score: categoryScores.cs.correct,
+    collab_score: categoryScores.collab.correct,
+    ai_score: categoryScores.ai.correct,
+    // report: {
+    //   ...report,
+    //   generated_at: new Date().toISOString(),
+    // },
+  };
+
+  // v2: 카테고리별 pass/timeout/total 점수도 저장
+  if (statsVersion === "v2") {
+    updateData.cs_pass_score = categoryScores.cs.pass;
+    updateData.collab_pass_score = categoryScores.collab.pass;
+    updateData.ai_pass_score = categoryScores.ai.pass;
+    updateData.cs_timeout_score = categoryScores.cs.timeout;
+    updateData.collab_timeout_score = categoryScores.collab.timeout;
+    updateData.ai_timeout_score = categoryScores.ai.timeout;
+    updateData.cs_total_score = categoryScores.cs.total;
+    updateData.collab_total_score = categoryScores.collab.total;
+    updateData.ai_total_score = categoryScores.ai.total;
+  }
+
   const { error: attemptUpdateError } = await supabase
     .from("attempts")
-    .update({
-      submitted_at: new Date().toISOString(),
-      score: score,
-      cs_score: categoryScores.cs.correct,
-      collab_score: categoryScores.collab.correct,
-      ai_score: categoryScores.ai.correct,
-      // report: {
-      //   ...report,
-      //   generated_at: new Date().toISOString(),
-      // },
-    })
+    .update(updateData)
     .eq("id", parse.data.attemptId)
     .is("submitted_at", null);
 
