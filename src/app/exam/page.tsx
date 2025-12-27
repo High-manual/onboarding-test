@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getBrowserSupabaseClient } from "@/lib/supabase/client";
 import type { Attempt, Question } from "@/lib/types";
-
 
 function getCategoryLabel(category?: string | null): string | null {
   if (!category) return null;
@@ -21,69 +20,90 @@ function getCategoryLabel(category?: string | null): string | null {
   }
 }
 
+const VALID_CHOICES = ["A", "B", "C", "D", "E", "X"] as const;
+const TIME_PER_QUESTION = 20;
+
 export default function ExamPage() {
   const router = useRouter();
   const supabase = useMemo(() => getBrowserSupabaseClient(), []);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [attempt, setAttempt] = useState<Attempt | null>(null);
-  const [answers, setAnswers] = useState<Record<string, "A" | "B" | "C" | "D" | "E" | "X">>(
-    {}
-  );
-  const [status, setStatus] = useState<"idle" | "loading" | "submitting" | "done">(
-    "idle"
-  );
+  const [answers, setAnswers] = useState<Record<string, "A" | "B" | "C" | "D" | "E" | "X">>({});
+  const [status, setStatus] = useState<"idle" | "loading" | "submitting" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(1080); // 18분 = 1080초
+  const [timeLeft, setTimeLeft] = useState(TIME_PER_QUESTION);
   const [isTimerActive, setIsTimerActive] = useState(false);
-  const [hasAutoSubmitted, setHasAutoSubmitted] = useState(false);
+  const timeoutHandledRef = useRef(false);
+  const indexRestoredRef = useRef(false);
 
-  // localStorage에서 답변 및 시간 복원
+  // 제출 로직 통합
+  const submitExam = useCallback(
+    async (errorMessage = "제출에 실패했습니다.") => {
+      if (!attempt || !sessionToken || !questions.length) return;
+
+      setStatus("submitting");
+      setError(null);
+
+      const payload = {
+        attemptId: attempt.id,
+        responses: questions.map((q) => ({
+          questionId: q.id,
+          selected: (answers[q.id] || "X") as "A" | "B" | "C" | "D" | "E" | "X",
+        })),
+      };
+
+      try {
+        const response = await fetch("/api/submit", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${sessionToken}`,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const json = await response.json();
+        if (!response.ok) {
+          setError(json.error ?? errorMessage);
+          setStatus("idle");
+          return;
+        }
+
+        // 제출 성공 시 localStorage 정리
+        localStorage.removeItem("exam_answers");
+        localStorage.removeItem("exam_current_index");
+        setIsTimerActive(false);
+        router.push(`/result?attemptId=${attempt.id}`);
+      } catch (err) {
+        setError(errorMessage);
+        setStatus("idle");
+      }
+    },
+    [attempt, sessionToken, questions, answers, router]
+  );
+
+  // 초기화: localStorage에서 답변 및 인덱스 복원
   useEffect(() => {
     const savedAnswers = localStorage.getItem("exam_answers");
-    const savedIndex = localStorage.getItem("exam_current_index");
-    const savedTime = localStorage.getItem("exam_time_left");
-    const savedStartTime = localStorage.getItem("exam_start_time");
-    
     if (savedAnswers) {
       try {
-        setAnswers(JSON.parse(savedAnswers));
+        const parsed = JSON.parse(savedAnswers);
+        const validAnswers: Record<string, "A" | "B" | "C" | "D" | "E" | "X"> = {};
+        Object.entries(parsed).forEach(([key, value]) => {
+          if (VALID_CHOICES.includes(value as any)) {
+            validAnswers[key] = value as "A" | "B" | "C" | "D" | "E" | "X";
+          }
+        });
+        setAnswers(validAnswers);
       } catch (e) {
         console.error("Failed to parse saved answers:", e);
       }
     }
-    
-    if (savedIndex) {
-      try {
-        setCurrentIndex(parseInt(savedIndex, 10));
-      } catch (e) {
-        console.error("Failed to parse saved index:", e);
-      }
-    }
-
-    // 시간 복원: 시작 시간이 있으면 경과 시간 계산, 없으면 저장된 시간 사용
-    if (savedStartTime) {
-      try {
-        const startTime = parseInt(savedStartTime, 10);
-        const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        const remaining = Math.max(0, 1080 - elapsed);
-        setTimeLeft(remaining);
-      } catch (e) {
-        console.error("Failed to parse saved start time:", e);
-      }
-    } else if (savedTime) {
-      try {
-        setTimeLeft(parseInt(savedTime, 10));
-      } catch (e) {
-        console.error("Failed to parse saved time:", e);
-      }
-    }
-    
-    setIsInitialized(true);
   }, []);
 
+  // 세션 확인
   useEffect(() => {
     const fetchSession = async () => {
       const { data } = await supabase.auth.getSession();
@@ -96,6 +116,7 @@ export default function ExamPage() {
     fetchSession();
   }, [router, supabase]);
 
+  // 데이터 로드: questions와 attempt
   useEffect(() => {
     if (!sessionToken) return;
 
@@ -144,179 +165,118 @@ export default function ExamPage() {
     load();
   }, [sessionToken]);
 
-  // 답변 변경 시 localStorage에 저장
+  // questions 로드 후 currentIndex 복원 (한 번만)
   useEffect(() => {
-    if (isInitialized) {
-      localStorage.setItem("exam_answers", JSON.stringify(answers));
-    }
-  }, [answers, isInitialized]);
+    if (questions.length === 0 || indexRestoredRef.current) return;
 
-  // 현재 문제 인덱스 변경 시 localStorage에 저장
-  useEffect(() => {
-    if (isInitialized) {
-      localStorage.setItem("exam_current_index", currentIndex.toString());
-    }
-  }, [currentIndex, isInitialized]);
-
-  // 시험 시작 시 타이머 시작
-  useEffect(() => {
-    if (questions.length > 0 && attempt && !isTimerActive && status === "idle") {
-      const savedStartTime = localStorage.getItem("exam_start_time");
-      if (!savedStartTime) {
-        // 처음 시작하는 경우 시작 시간 저장
-        localStorage.setItem("exam_start_time", Date.now().toString());
+    const savedIndex = localStorage.getItem("exam_current_index");
+    if (savedIndex) {
+      try {
+        const parsedIndex = parseInt(savedIndex, 10);
+        if (parsedIndex >= 0 && parsedIndex < questions.length) {
+          setCurrentIndex(parsedIndex);
+        } else {
+          setCurrentIndex(0);
+          localStorage.setItem("exam_current_index", "0");
+        }
+      } catch (e) {
+        console.error("Failed to parse saved index:", e);
+        setCurrentIndex(0);
       }
-      setIsTimerActive(true);
     }
-  }, [questions.length, attempt, isTimerActive, status]);
+    indexRestoredRef.current = true;
+  }, [questions.length]);
 
-  // 시간 초과 시 자동 제출 (한 번만 실행)
+  // localStorage 동기화 및 타이머 관리
   useEffect(() => {
-    if (!isTimerActive || status !== "idle" || hasAutoSubmitted) return;
-    if (timeLeft > 0) return;
+    if (questions.length === 0 || status !== "idle") return;
 
-    // 시간 초과 시 모든 미답변 문제를 X로 처리하고 자동 제출
-    setIsTimerActive(false);
-    setHasAutoSubmitted(true);
-    
-    const updatedAnswers = { ...answers };
-    questions.forEach((q) => {
-      if (!updatedAnswers[q.id]) {
-        updatedAnswers[q.id] = "X" as "A" | "B" | "C" | "D" | "E";
-      }
-    });
-    
-    setAnswers(updatedAnswers);
-    
-    // 자동 제출
-    if (attempt && sessionToken) {
-      const payload = {
-        attemptId: attempt.id,
-        responses: Object.entries(updatedAnswers)
-          .filter(([_, selected]) => ["A", "B", "C", "D", "E", "X"].includes(selected))
-          .map(([questionId, selected]) => ({
-            questionId,
-            selected: selected as "A" | "B" | "C" | "D" | "E" | "X",
-          })),
-      };
+    // localStorage 저장
+    localStorage.setItem("exam_answers", JSON.stringify(answers));
+    localStorage.setItem("exam_current_index", currentIndex.toString());
 
-      fetch("/api/submit", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${sessionToken}`,
-        },
-        body: JSON.stringify(payload),
-      })
-        .then(async (response) => {
-          const json = await response.json();
-          if (!response.ok) {
-            setError(json.error ?? "시간 초과로 인한 자동 제출에 실패했습니다.");
-            setStatus("idle");
-            return;
-          }
-          localStorage.removeItem("exam_answers");
-          localStorage.removeItem("exam_current_index");
-          localStorage.removeItem("exam_time_left");
-          localStorage.removeItem("exam_start_time");
-          // 결과 페이지로 리다이렉트
-          router.push(`/result?attemptId=${attempt.id}`);
-        })
-        .catch((err) => {
-          setError("시간 초과로 인한 자동 제출에 실패했습니다.");
-          setStatus("idle");
-        });
-    }
-  }, [timeLeft, isTimerActive, status, hasAutoSubmitted, questions, answers, attempt, sessionToken, router]);
+    // 타이머 리셋 및 시작
+    setTimeLeft(TIME_PER_QUESTION);
+    setIsTimerActive(true);
+    timeoutHandledRef.current = false;
+  }, [currentIndex, answers, questions.length, status]);
 
   // 타이머 로직
   useEffect(() => {
-    if (!isTimerActive || status !== "idle" || timeLeft <= 0) return;
+    if (!isTimerActive || status !== "idle") return;
 
     const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        const newTime = Math.max(0, prev - 1);
-        // localStorage에 시간 저장
-        if (isInitialized) {
-          localStorage.setItem("exam_time_left", newTime.toString());
-        }
-        return newTime;
-      });
+      setTimeLeft((prev) => Math.max(0, prev - 1));
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isTimerActive, status, timeLeft, isInitialized]);
+  }, [isTimerActive, status]);
+
+  // 시간 초과 처리
+  useEffect(() => {
+    if (timeLeft !== 0 || !isTimerActive || status !== "idle" || questions.length === 0) return;
+    if (timeoutHandledRef.current) return;
+
+    const currentQ = questions[currentIndex];
+    if (!currentQ) return;
+
+    timeoutHandledRef.current = true;
+    setIsTimerActive(false);
+
+    // 현재 문제가 답변되지 않았으면 X로 표시
+    const currentQuestionId = currentQ.id;
+    setAnswers((prev) => {
+      if (prev[currentQuestionId]) return prev;
+      return { ...prev, [currentQuestionId]: "X" };
+    });
+
+    // 마지막 문제가 아닌 경우 다음 문제로 이동
+    if (currentIndex < questions.length - 1) {
+      setTimeout(() => setCurrentIndex((v) => v + 1), 100);
+    } else {
+      // 마지막 문제에서 시간 초과 시 자동 제출
+      submitExam("시간 초과로 인한 자동 제출에 실패했습니다.");
+    }
+  }, [timeLeft, isTimerActive, status, currentIndex, questions, submitExam]);
 
   const handleSelect = (questionId: string, selected: "A" | "B" | "C" | "D" | "E") => {
     setAnswers((prev) => ({ ...prev, [questionId]: selected }));
   };
 
-  // 답을 입력해야지만 다음으로 넘길 수 있음
-  const isCurrentAnswered = questions[currentIndex]
-  ? !!answers[questions[currentIndex].id]
-  : false;
-
-
-  // 모든 문제를 풀었을 때만 제출 가능
-  const isAllAnswered = useMemo(() => {
-    if (!questions.length) return false;
-    return questions.every((q) => !!answers[q.id]);
-  }, [questions, answers]);
-
   const handleSubmit = async () => {
-    if (!attempt || !sessionToken) return;
     if (!isAllAnswered) return;
-
-    setStatus("submitting");
-    setError(null);
-
-    const payload = {
-      attemptId: attempt.id,
-      responses: Object.entries(answers)
-        .filter(([_, selected]) => ["A", "B", "C", "D", "E", "X"].includes(selected))
-        .map(([questionId, selected]) => ({
-          questionId,
-          selected: selected as "A" | "B" | "C" | "D" | "E" | "X",
-        })),
-    };
-
-    const response = await fetch("/api/submit", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${sessionToken}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const json = await response.json();
-    if (!response.ok) {
-      setError(json.error ?? "제출에 실패했습니다.");
-      setStatus("idle");
-      return;
-    }
-
-    // 제출 성공 시 localStorage 정리
-    localStorage.removeItem("exam_answers");
-    localStorage.removeItem("exam_current_index");
-    localStorage.removeItem("exam_time_left");
-    localStorage.removeItem("exam_start_time");
-    setIsTimerActive(false);
-
-    // 결과 페이지로 리다이렉트
-    router.push(`/result?attemptId=${attempt.id}`);
+    await submitExam();
   };
 
-  const currentQuestion = questions[currentIndex];
-  const progressText = `${currentIndex + 1} / ${questions.length || 1}`;
+  // 계산된 값들
+  const validCurrentIndex = useMemo(() => {
+    if (questions.length === 0) return 0;
+    return Math.max(0, Math.min(currentIndex, questions.length - 1));
+  }, [currentIndex, questions.length]);
+
+  const isAllAnswered = useMemo(() => {
+    if (questions.length === 0) return false;
+    return Object.keys(answers).length === questions.length;
+  }, [answers, questions.length]);
+
+  // currentIndex 범위 검증 및 수정
+  useEffect(() => {
+    if (questions.length > 0 && currentIndex >= questions.length) {
+      setCurrentIndex(0);
+      localStorage.setItem("exam_current_index", "0");
+    }
+  }, [currentIndex, questions.length]);
+
+  const currentQuestion = questions[validCurrentIndex];
+  const progressText = questions.length > 0 
+    ? `${validCurrentIndex + 1} / ${questions.length}`
+    : "0 / 0";
   const categoryLabel = currentQuestion ? getCategoryLabel(currentQuestion.category) : null;
   
-  // 시간을 분:초 형식으로 변환
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
+  // 답을 입력해야지만 다음으로 넘길 수 있음
+  const isCurrentAnswered = currentQuestion
+    ? !!answers[currentQuestion.id]
+    : false;
 
   if (!sessionToken) {
     return (
@@ -356,18 +316,18 @@ export default function ExamPage() {
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
             <div
               style={{
-                background: timeLeft <= 60 ? "#ef4444" : timeLeft <= 300 ? "#f59e0b" : "#10b981",
+                background: timeLeft <= 5 ? "#ef4444" : "#10b981",
                 color: "white",
                 padding: "8px 16px",
                 borderRadius: 8,
                 fontWeight: 700,
                 fontSize: "18px",
-                minWidth: 80,
+                minWidth: 60,
                 textAlign: "center",
                 transition: "background 0.3s",
               }}
             >
-              {formatTime(timeLeft)}
+              {timeLeft}초
             </div>
             <div
               style={{
@@ -532,23 +492,6 @@ export default function ExamPage() {
           }}
         >
           <button
-            onClick={() => setCurrentIndex((v) => Math.max(0, v - 1))}
-            disabled={currentIndex === 0}
-            style={{
-              padding: "12px 20px",
-              borderRadius: 8,
-              border: "2px solid #e5e7eb",
-              background: currentIndex === 0 ? "#f9fafb" : "white",
-              color: currentIndex === 0 ? "#9ca3af" : "#374151",
-              fontWeight: 600,
-              cursor: currentIndex === 0 ? "not-allowed" : "pointer",
-              transition: "all 0.2s",
-            }}
-          >
-            이전
-          </button>
-
-          <button
             onClick={() =>
               setCurrentIndex((v) => Math.min(questions.length - 1, v + 1))
             }
@@ -559,25 +502,24 @@ export default function ExamPage() {
               padding: "12px 20px",
               borderRadius: 8,
               border: "2px solid #e5e7eb",
-                background:
-                  currentIndex >= questions.length - 1 || !isCurrentAnswered
-                    ? "#f9fafb"
-                    : "white",
-                color:
-                  currentIndex >= questions.length - 1 || !isCurrentAnswered
-                    ? "#9ca3af"
-                    : "#374151",
-                fontWeight: 600,
-                cursor:
-                  currentIndex >= questions.length - 1 || !isCurrentAnswered
-                    ? "not-allowed"
-                    : "pointer",
-                transition: "all 0.2s",
-              }}
-            >
-              다음
-            </button>
-
+              background:
+                currentIndex >= questions.length - 1 || !isCurrentAnswered
+                  ? "#f9fafb"
+                  : "white",
+              color:
+                currentIndex >= questions.length - 1 || !isCurrentAnswered
+                  ? "#9ca3af"
+                  : "#374151",
+              fontWeight: 600,
+              cursor:
+                currentIndex >= questions.length - 1 || !isCurrentAnswered
+                  ? "not-allowed"
+                  : "pointer",
+              transition: "all 0.2s",
+            }}
+          >
+            다음
+          </button>
 
           <div style={{ flex: 1, minWidth: 100 }} />
 
