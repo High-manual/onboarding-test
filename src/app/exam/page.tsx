@@ -37,6 +37,7 @@ export default function ExamPage() {
   const [isTimerActive, setIsTimerActive] = useState(false);
   const timeoutHandledRef = useRef(false);
   const indexRestoredRef = useRef(false);
+  const answersInitializedRef = useRef(false);
 
   // 제출 로직 통합
   const submitExam = useCallback(
@@ -101,6 +102,7 @@ export default function ExamPage() {
         console.error("Failed to parse saved answers:", e);
       }
     }
+    answersInitializedRef.current = true;
   }, []);
 
   // 세션 확인
@@ -187,19 +189,23 @@ export default function ExamPage() {
     indexRestoredRef.current = true;
   }, [questions.length]);
 
-  // localStorage 동기화 및 타이머 관리
+  // localStorage 동기화 (answers 변경 시)
+  useEffect(() => {
+    if (questions.length === 0 || status !== "idle" || !answersInitializedRef.current) return;
+    localStorage.setItem("exam_answers", JSON.stringify(answers));
+  }, [answers, questions.length, status]);
+
+  // localStorage 동기화 및 타이머 관리 (currentIndex 변경 시)
   useEffect(() => {
     if (questions.length === 0 || status !== "idle") return;
 
-    // localStorage 저장
-    localStorage.setItem("exam_answers", JSON.stringify(answers));
     localStorage.setItem("exam_current_index", currentIndex.toString());
 
     // 타이머 리셋 및 시작
     setTimeLeft(TIME_PER_QUESTION);
     setIsTimerActive(true);
     timeoutHandledRef.current = false;
-  }, [currentIndex, answers, questions.length, status]);
+  }, [currentIndex, questions.length, status]);
 
   // 타이머 로직
   useEffect(() => {
